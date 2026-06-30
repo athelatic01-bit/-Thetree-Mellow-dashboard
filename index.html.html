@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard คนไข้ใหม่</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f8fafc; color: #1e293b; font-size: 13px; }
+  .dashboard { padding: 24px; max-width: 1100px; margin: 0 auto; }
+  .title { font-size: 22px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
+  .subtitle { font-size: 12px; color: #64748b; margin-bottom: 20px; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; }
+  .tab { padding: 6px 14px; border-radius: 20px; border: 1px solid #e2e8f0; cursor: pointer; font-size: 12px; background: #fff; color: #64748b; transition: all .15s; }
+  .tab:hover { border-color: #3b82f6; color: #3b82f6; }
+  .tab.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .kpi { background: #fff; border-radius: 12px; padding: 14px 16px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+  .kpi-label { font-size: 11px; color: #64748b; margin-bottom: 6px; font-weight: 500; }
+  .kpi-value { font-size: 24px; font-weight: 700; color: #1e293b; line-height: 1.1; }
+  .kpi-sub { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+  .kpi-up { color: #22c55e; font-weight: 600; } .kpi-down { color: #ef4444; font-weight: 600; }
+  .charts-top { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .charts-bot { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .card { background: #fff; border-radius: 12px; padding: 16px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+  .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; }
+  .card-title { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .6px; }
+  .branch-sel { font-size: 11px; padding: 4px 10px; border-radius: 6px; border: 1px solid #e2e8f0; background: #f8fafc; color: #1e293b; cursor: pointer; }
+  .branch-sel:focus { outline: none; border-color: #3b82f6; }
+  canvas { width: 100% !important; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { padding: 8px 12px; text-align: left; font-weight: 600; color: #64748b; border-bottom: 2px solid #e2e8f0; background: #f8fafc; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
+  td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
+  tbody tr:hover { background: #f8fafc; }
+  tr:last-child td { border-bottom: none; font-weight: 600; background: #f1f5f9; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .badge-blue { background: #dbeafe; color: #1d4ed8; }
+  .badge-green { background: #dcfce7; color: #15803d; }
+</style>
+</head>
+<body>
+<div class="dashboard">
+  <div class="title">📊 Dashboard คนไข้ใหม่</div>
+  <div class="subtitle">ข้อมูลตั้งแต่ ธ.ค. 2568 – มิ.ย. 2569 | 5 สาขา | จัดทำโดย Claude AI</div>
+  <div class="tabs" id="tabs"></div>
+  <div class="kpi-row" id="kpis"></div>
+  <div class="charts-top">
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">ยอดรวมคนไข้ใหม่รายเดือน</div>
+        <select class="branch-sel" id="trendBranch"></select>
+      </div>
+      <canvas id="trendChart" height="130"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">ช่องทางที่มา</div>
+        <select class="branch-sel" id="channelBranch"></select>
+      </div>
+      <canvas id="channelChart" height="130"></canvas>
+    </div>
+  </div>
+  <div class="charts-bot">
+    <div class="card">
+      <div class="card-head"><div class="card-title">จำนวนคนไข้ใหม่แต่ละสาขา</div></div>
+      <canvas id="branchChart" height="150"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title">จัดฟัน vs ทั่วไป (เดือนที่เลือก)</div></div>
+      <canvas id="serviceChart" height="150"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head"><div class="card-title">รายละเอียดแต่ละสาขา (เดือนที่เลือก)</div></div>
+    <div class="table-wrap"><table id="detailTable"></table></div>
+  </div>
+</div>
+
+<script>
+const MONTHS = [
+  { label: 'ธ.ค. 68', key: 'ธ.ค. 68' },
+  { label: 'ม.ค. 69', key: 'ม.ค. 69' },
+  { label: 'ก.พ. 69', key: 'ก.พ. 69' },
+  { label: 'มี.ค. 69', key: 'มี.ค. 69' },
+  { label: 'เม.ย. 69', key: 'เม.ย. 69' },
+  { label: 'พ.ค. 69', key: 'พ.ค. 69' },
+  { label: 'มิ.ย. 69', key: 'มิ.ย. 69' },
+];
+const BRANCHES = ['บางปู','บางพลี','สายสี่','สำโรง','เมลโล่'];
+const CHANNELS = ['Facebook','เพื่อน/ป้าย','TikTok','Google'];
+
+const RAW = {
+  'ธ.ค. 68': {
+    'จัดฟัน+ทั่วไป': { 'บางปู':[81,168,2,9], 'บางพลี':[95,143,12,30], 'สายสี่':[75,75,12,13], 'สำโรง':[61,93,2,26], 'เมลโล่':[33,113,2,12] },
+    'จัดฟัน':         { 'บางปู':[20,40,2,0], 'บางพลี':[21,22,3,4], 'สายสี่':[28,7,5,0], 'สำโรง':[11,24,0,1], 'เมลโล่':[6,13,1,1] },
+    'ทั่วไป':         { 'บางปู':[61,128,0,9], 'บางพลี':[74,121,9,26], 'สายสี่':[47,68,7,13], 'สำโรง':[50,69,2,25], 'เมลโล่':[27,100,1,11] },
+  },
+  'ม.ค. 69': {
+    'จัดฟัน+ทั่วไป': { 'บางปู':[121,130,3,20], 'บางพลี':[82,196,17,43], 'สายสี่':[68,104,6,14], 'สำโรง':[57,110,13,14], 'เมลโล่':[38,97,0,9] },
+    'จัดฟัน':         { 'บางปู':[51,32,1,2], 'บางพลี':[25,98,10,2], 'สายสี่':[26,16,4,2], 'สำโรง':[21,17,10,3], 'เมลโล่':[19,14,0,1] },
+    'ทั่วไป':         { 'บางปู':[70,98,2,18], 'บางพลี':[57,98,7,41], 'สายสี่':[42,88,2,12], 'สำโรง':[36,93,3,11], 'เมลโล่':[19,83,0,8] },
+  },
+  'ก.พ. 69': {
+    'จัดฟัน+ทั่วไป': { 'บางปู':[79,140,2,12], 'บางพลี':[53,85,2,22], 'สายสี่':[43,67,6,13], 'สำโรง':[31,92,12,15], 'เมลโล่':[32,80,2,9] },
+    'จัดฟัน':         { 'บางปู':[41,37,0,3], 'บางพลี':[18,18,2,2], 'สายสี่':[22,13,4,1], 'สำโรง':[12,10,6,2], 'เมลโล่':[9,5,0,1] },
+    'ทั่วไป':         { 'บางปู':[38,103,2,9], 'บางพลี':[35,67,0,20], 'สายสี่':[21,54,2,12], 'สำโรง':[19,82,6,13], 'เมลโล่':[23,75,2,8] },
+  },
+  'มี.ค. 69': {
+    'จัดฟัน+ทั่วไป': { 'บางปู':[73,176,5,13], 'บางพลี':[36,85,19,22], 'สายสี่':[77,61,10,6], 'สำโรง':[30,69,6,18], 'เมลโล่':[18,91,1,13] },
+    'จัดฟัน':         { 'บางปู':[34,41,0,3], 'บางพลี':[13,28,10,1], 'สายสี่':[24,9,8,1], 'สำโรง':[15,12,3,2], 'เมลโล่':[7,11,0,0] },
+    'ทั่วไป':         { 'บางปู':[39,135,5,10], 'บางพลี':[23,57,9,21], 'สายสี่':[53,52,2,5], 'สำโรง':[15,57,3,16], 'เมลโล่':[11,80,1,13] },
+  },
+  'เม.ย. 69': {
+    'จัดฟัน+ทั่วไป': { 'บางปู':[55,125,3,3], 'บางพลี':[45,87,9,26], 'สายสี่':[43,47,4,4], 'สำโรง':[14,74,5,12], 'เมลโล่':[18,92,0,12] },
+    'จัดฟัน':         { 'บางปู':[23,23,2,0], 'บางพลี':[19,13,2,0], 'สายสี่':[18,9,2,0], 'สำโรง':[8,11,5,0], 'เมลโล่':[11,8,0,1] },
+    'ทั่วไป':         { 'บางปู':[32,102,1,3], 'บางพลี':[26,74,7,26], 'สายสี่':[25,38,2,4], 'สำโรง':[6,63,0,12], 'เมลโล่':[7,84,0,11] },
+  },
+  'พ.ค. 69': {
+    'จัดฟัน+ทั่วไป': { 'บางปู':[62,106,0,10], 'บางพลี':[30,119,12,22], 'สายสี่':[57,44,3,8], 'สำโรง':[22,84,5,7], 'เมลโล่':[19,96,2,3] },
+    'จัดฟัน':         { 'บางปู':[31,32,0,0], 'บางพลี':[6,19,7,2], 'สายสี่':[21,6,3,1], 'สำโรง':[11,19,5,0], 'เมลโล่':[7,8,2,0] },
+    'ทั่วไป':         { 'บางปู':[31,74,0,10], 'บางพลี':[24,100,5,20], 'สายสี่':[36,38,0,7], 'สำโรง':[11,65,0,7], 'เมลโล่':[12,88,0,3] },
+  },
+  'มิ.ย. 69': {
+    'จัดฟัน+ทั่วไป': { 'บางปู':[63,119,0,7], 'บางพลี':[38,101,5,14], 'สายสี่':[30,52,4,7], 'สำโรง':[23,55,4,8], 'เมลโล่':[10,78,0,3] },
+    'จัดฟัน':         { 'บางปู':[22,30,0,0], 'บางพลี':[19,13,2,1], 'สายสี่':[12,8,2,0], 'สำโรง':[8,7,3,2], 'เมลโล่':[5,4,0,0] },
+    'ทั่วไป':         { 'บางปู':[41,89,0,7], 'บางพลี':[19,88,3,13], 'สายสี่':[18,44,2,7], 'สำโรง':[15,48,1,6], 'เมลโล่':[5,74,0,3] },
+  },
+};
+
+const sumBranch = (m, svc, b) => RAW[m][svc][b].reduce((s,v)=>s+v, 0);
+const sumAll = (m, svc) => BRANCHES.reduce((s,b)=>s+sumBranch(m,svc,b), 0);
+const sumChannel = (m, svc, chIdx) => BRANCHES.reduce((s,b)=>s+RAW[m][svc][b][chIdx], 0);
+const monthTotal = (m, svc, bSel) => bSel === 'ทั้งหมด' ? sumAll(m,svc) : sumBranch(m,svc,bSel);
+const channelTotal = (m, svc, chIdx, bSel) => bSel === 'ทั้งหมด' ? sumChannel(m,svc,chIdx) : RAW[m][svc][bSel][chIdx];
+
+const BRANCH_COLORS = ['#3b82f6','#f59e0b','#10b981','#ef4444','#8b5cf6'];
+const CH_COLORS = ['#3b82f6','#10b981','#f43f5e','#f59e0b'];
+
+let selMonth = 'มิ.ย. 69';
+let trendBranch = 'ทั้งหมด';
+let channelBranch = 'ทั้งหมด';
+let charts = {};
+
+function buildTabs() {
+  const el = document.getElementById('tabs');
+  MONTHS.forEach(m => {
+    const t = document.createElement('div');
+    t.className = 'tab' + (m.key === selMonth ? ' active' : '');
+    t.textContent = m.label;
+    t.onclick = () => { selMonth = m.key; render(); };
+    el.appendChild(t);
+  });
+}
+function buildBranchSelectors() {
+  const opts = ['ทั้งหมด', ...BRANCHES].map(b => `<option value="${b}">${b === 'ทั้งหมด' ? 'ทุกสาขา' : b}</option>`).join('');
+  const ts = document.getElementById('trendBranch');
+  const cs = document.getElementById('channelBranch');
+  ts.innerHTML = opts; cs.innerHTML = opts;
+  ts.value = trendBranch; cs.value = channelBranch;
+  ts.onchange = () => { trendBranch = ts.value; renderTrend(); };
+  cs.onchange = () => { channelBranch = cs.value; renderChannel(); };
+}
+function updateTabs() {
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    t.className = 'tab' + (MONTHS[i].key === selMonth ? ' active' : '');
+  });
+}
+function renderKPIs() {
+  const idx = MONTHS.findIndex(m => m.key === selMonth);
+  const total = sumAll(selMonth, 'จัดฟัน+ทั่วไป');
+  const prevKey = idx > 0 ? MONTHS[idx-1].key : null;
+  const prevTotal = prevKey ? sumAll(prevKey, 'จัดฟัน+ทั่วไป') : null;
+  const diff = prevTotal ? total - prevTotal : null;
+  const pct = prevTotal ? ((diff/prevTotal)*100).toFixed(1) : null;
+  const topBranch = BRANCHES.reduce((a,b) => sumBranch(selMonth,'จัดฟัน+ทั่วไป',b) > sumBranch(selMonth,'จัดฟัน+ทั่วไป',a) ? b : a);
+  let topChIdx = 0, topChVal = 0;
+  CHANNELS.forEach((c,i) => { const v = sumChannel(selMonth,'จัดฟัน+ทั่วไป',i); if (v>topChVal){topChVal=v;topChIdx=i;} });
+  const pctCh = ((topChVal/total)*100).toFixed(0);
+  const jadFan = sumAll(selMonth,'จัดฟัน');
+  const general = sumAll(selMonth,'ทั่วไป');
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi">
+      <div class="kpi-label">คนไข้ใหม่รวม</div>
+      <div class="kpi-value">${total.toLocaleString()}</div>
+      <div class="kpi-sub">${diff!==null ? `<span class="${diff>=0?'kpi-up':'kpi-down'}">${diff>=0?'▲':'▼'} ${Math.abs(diff)} (${pct}%)</span> vs เดือนก่อน` : 'เดือนเริ่มต้น'}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">สาขาสูงสุด</div>
+      <div class="kpi-value" style="font-size:18px">${topBranch}</div>
+      <div class="kpi-sub">${sumBranch(selMonth,'จัดฟัน+ทั่วไป',topBranch).toLocaleString()} คน</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">ช่องทางหลัก</div>
+      <div class="kpi-value" style="font-size:16px">${CHANNELS[topChIdx]}</div>
+      <div class="kpi-sub">${topChVal} คน (${pctCh}%)</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">จัดฟัน / ทั่วไป</div>
+      <div class="kpi-value" style="font-size:18px">${jadFan} / ${general}</div>
+      <div class="kpi-sub">${((jadFan/total)*100).toFixed(0)}% / ${((general/total)*100).toFixed(0)}%</div>
+    </div>
+  `;
+}
+function renderTrend() {
+  const labels = MONTHS.map(m => m.label);
+  const data = MONTHS.map(m => monthTotal(m.key, 'จัดฟัน+ทั่วไป', trendBranch));
+  const selLabel = MONTHS.find(m=>m.key===selMonth).label;
+  const lineColor = trendBranch === 'ทั้งหมด' ? '#3b82f6' : BRANCH_COLORS[BRANCHES.indexOf(trendBranch)];
+  const ctx = document.getElementById('trendChart').getContext('2d');
+  if (charts.trend) charts.trend.destroy();
+  charts.trend = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets: [{
+      label: trendBranch === 'ทั้งหมด' ? 'ทุกสาขา' : trendBranch, data,
+      borderColor: lineColor, backgroundColor: lineColor + '22',
+      borderWidth: 2.5, fill: true, tension: 0.3,
+      pointBackgroundColor: labels.map(l => l===selLabel ? '#ef4444' : lineColor),
+      pointRadius: labels.map(l => l===selLabel ? 7 : 4),
+    }]},
+    options: { responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: (c) => ` ${c.parsed.y.toLocaleString()} คน` } } },
+      scales: { y: { grid: { color: 'rgba(0,0,0,.06)' }, ticks: { color: '#94a3b8', font:{size:10} } },
+                x: { grid: { display: false }, ticks: { color: '#94a3b8', font:{size:10} } } } }
+  });
+}
+function renderChannel() {
+  const vals = CHANNELS.map((c,i) => channelTotal(selMonth, 'จัดฟัน+ทั่วไป', i, channelBranch));
+  const totalCh = vals.reduce((s,v)=>s+v, 0);
+  const ctx = document.getElementById('channelChart').getContext('2d');
+  if (charts.channel) charts.channel.destroy();
+  charts.channel = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels: CHANNELS, datasets: [{ data: vals, backgroundColor: CH_COLORS, borderWidth: 2, borderColor: '#fff' }] },
+    options: { responsive: true, maintainAspectRatio: true,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#64748b', font:{size:10}, boxWidth: 10, padding: 10 } },
+        tooltip: { callbacks: {
+          label: (c) => {
+            const v = c.parsed;
+            const p = totalCh > 0 ? ((v/totalCh)*100).toFixed(1) : '0.0';
+            return ` ${c.label}: ${v} คน (${p}%)`;
+          }
+        }}
+      }}
+  });
+}
+function renderBranch() {
+  const vals = BRANCHES.map(b => sumBranch(selMonth, 'จัดฟัน+ทั่วไป', b));
+  const ctx = document.getElementById('branchChart').getContext('2d');
+  if (charts.branch) charts.branch.destroy();
+  charts.branch = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: BRANCHES, datasets: [{ label: 'คนไข้ใหม่', data: vals, backgroundColor: BRANCH_COLORS, borderRadius: 6 }] },
+    options: { responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: (c) => ` ${c.parsed.y} คน` } } },
+      scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,.06)' }, ticks: { color: '#94a3b8', font:{size:10} } },
+                x: { grid: { display: false }, ticks: { color: '#94a3b8', font:{size:10} } } } }
+  });
+}
+function renderService() {
+  const jadFan = BRANCHES.map(b => sumBranch(selMonth, 'จัดฟัน', b));
+  const general = BRANCHES.map(b => sumBranch(selMonth, 'ทั่วไป', b));
+  const ctx = document.getElementById('serviceChart').getContext('2d');
+  if (charts.service) charts.service.destroy();
+  charts.service = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: BRANCHES, datasets: [
+      { label: 'จัดฟัน', data: jadFan, backgroundColor: '#3b82f6', borderRadius: 4 },
+      { label: 'ทั่วไป', data: general, backgroundColor: '#10b981', borderRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { position: 'top', labels: { color: '#64748b', font:{size:10}, boxWidth:10 } } },
+      scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,.06)' }, ticks: { color: '#94a3b8', font:{size:10} } },
+                x: { grid: { display: false }, ticks: { color: '#94a3b8', font:{size:10} } } } }
+  });
+}
+function renderTable() {
+  const rows = BRANCHES.map(b => {
+    const [fb,fr,tk,gg] = RAW[selMonth]['จัดฟัน+ทั่วไป'][b];
+    const total = fb+fr+tk+gg;
+    const jf = sumBranch(selMonth,'จัดฟัน',b);
+    const tg = sumBranch(selMonth,'ทั่วไป',b);
+    return { b, fb, fr, tk, gg, total, jf, tg };
+  });
+  const grandTotal = rows.reduce((s,r)=>s+r.total, 0);
+  document.getElementById('detailTable').innerHTML = `
+    <thead><tr>
+      <th>สาขา</th><th>Facebook</th><th>เพื่อน/ป้าย</th><th>TikTok</th><th>Google</th><th>ทั่วไป</th><th>จัดฟัน</th><th>รวม</th>
+    </tr></thead>
+    <tbody>
+      ${rows.map(r => `<tr>
+        <td><strong>${r.b}</strong></td>
+        <td>${r.fb}</td><td>${r.fr}</td><td>${r.tk}</td><td>${r.gg}</td>
+        <td><span class="badge badge-green">${r.tg}</span></td>
+        <td><span class="badge badge-blue">${r.jf}</span></td>
+        <td><strong>${r.total}</strong></td>
+      </tr>`).join('')}
+      <tr>
+        <td>รวมทั้งหมด</td>
+        <td>${rows.reduce((s,r)=>s+r.fb,0)}</td>
+        <td>${rows.reduce((s,r)=>s+r.fr,0)}</td>
+        <td>${rows.reduce((s,r)=>s+r.tk,0)}</td>
+        <td>${rows.reduce((s,r)=>s+r.gg,0)}</td>
+        <td>${rows.reduce((s,r)=>s+r.tg,0)}</td>
+        <td>${rows.reduce((s,r)=>s+r.jf,0)}</td>
+        <td>${grandTotal}</td>
+      </tr>
+    </tbody>
+  `;
+}
+function render() {
+  updateTabs(); renderKPIs(); renderTrend(); renderChannel(); renderBranch(); renderService(); renderTable();
+}
+buildTabs();
+buildBranchSelectors();
+render();
+</script>
+</body>
+</html>
